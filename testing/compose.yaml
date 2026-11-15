@@ -1,0 +1,66 @@
+# The servers this plugin's tests run against, each with no authentication (SASL `PLAIN`, any
+# user and password) and no TLS:
+#
+# - Apache Hive 4.0.1's HiveServer2 on 127.0.0.1:11000 (SPELAION_TEST_HIVE), with its embedded
+#   metastore;
+# - Spark 3.5.7's Thrift server on 127.0.0.1:11001 (SPELAION_TEST_SPARK), Spark local;
+# - Apache Kyuubi 1.10.2 on 127.0.0.1:11009 (SPELAION_TEST_KYUUBI), which starts its Spark engine
+#   on the first session (a minute or so).
+#
+# Each JVM is bounded (heap and container), so the three fit CI's runner together.
+name: spelaiondb-plugin-hive-test
+
+services:
+  hive:
+    # 4.0.1, by digest: the build these tests were written against.
+    image: apache/hive@sha256:5194161ef50b80875f937dff04936df047cbe894e9727ab8f0606349345b1bd3
+    environment:
+      SERVICE_NAME: hiveserver2
+      SERVICE_OPTS: -Xmx768m
+    mem_limit: 1536m
+    ports:
+      - "127.0.0.1:11000:10000"
+    healthcheck:
+      # The Thrift port accepts connections once HiveServer2 serves.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/10000' || exit 1"]
+      interval: 3s
+      retries: 100
+
+  spark:
+    # 3.5.7, by digest.
+    image: apache/spark@sha256:936ff39fd63e2bb5ed064f0fbe1518198473f1cdbfa2f863d087a9a8e58116ba
+    environment:
+      SPARK_NO_DAEMONIZE: "1"
+    mem_limit: 1536m
+    command:
+      - /opt/spark/sbin/start-thriftserver.sh
+      - --master
+      - local[2]
+      - --driver-memory
+      - 768m
+      - --conf
+      - spark.ui.enabled=false
+      - --hiveconf
+      - hive.server2.thrift.port=10000
+    ports:
+      - "127.0.0.1:11001:10000"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/10000' || exit 1"]
+      interval: 3s
+      retries: 100
+
+  kyuubi:
+    # 1.10.2 with Spark, by digest.
+    image: apache/kyuubi@sha256:22158d1fb4a54ad3d7d9b59a64da3d9e088b126f0accea333620d1ec473101a2
+    command: ["./bin/kyuubi", "run"]
+    environment:
+      SPARK_HOME: /opt/kyuubi/externals/spark-3.5.2-bin-hadoop3
+      # The server's heap, and its Spark engine's driver (started on the first session).
+      KYUUBI_JAVA_OPTS: -Xmx384m -Dkyuubi.frontend.bind.host=0.0.0.0 -Dspark.driver.memory=768m -Dspark.ui.enabled=false
+    mem_limit: 2g
+    ports:
+      - "127.0.0.1:11009:10009"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/10009' || exit 1"]
+      interval: 3s
+      retries: 100

@@ -18,6 +18,11 @@ allow = [
   "CC0-1.0",
   "CDLA-Permissive-2.0",
 ]
+# Thrift's runtime reads variable-length integers with varint-rs, under the BSD Zero Clause
+# License (as permissive as a license gets, OSI approved): allowed for that crate only.
+[[licenses.exceptions]]
+crate = "varint-rs"
+allow = ["0BSD"]
 
 [bans]
 multiple-versions = "allow"
